@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>IPTV 2.0 - Players Online</title>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Inter", Arial, sans-serif;
+            background: linear-gradient(135deg, #0c1118, #131922);
+            color: #ececec;
+        }
+
+        h1 {
+            text-align: center;
+            padding: 25px 0;
+            margin: 0;
+            font-weight: 700;
+            font-size: 32px;
+        }
+
+        .table-wrapper {
+            width: 95%;
+            max-width: 1300px;
+            margin: 20px auto;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(6px);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        #search {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 18px;
+            border-radius: 8px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+            background: #1c2330;
+            color: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            font-weight: 600;
+            color: #b6c2d1;
+            font-size: 15px;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        td {
+            padding: 12px;
+            font-size: 16px;
+            color: #e7e7e7;
+            vertical-align: top;
+        }
+
+        tr {
+            transition: 0.25s ease;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .safe-yes {
+            color: #73ff73;
+            font-weight: bold;
+        }
+
+        .safe-no {
+            color: #ff6d6d;
+            font-weight: bold;
+        }
+
+        .btn-mini {
+            padding: 8px 14px;
+            font-size: 14px;
+            background: #2d6cdf;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn-mini:hover {
+            background: #4d84ff;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            color: #aaa;
+        }
+
+        /* POPUP */
+        #popup-bg {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(3px);
+            z-index: 999;
+        }
+
+        #popup-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #151a22;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+
+        #popup-box h2 {
+            margin: 0 0 15px 0;
+            font-size: 22px;
+            text-align: center;
+        }
+
+        .map-container {
+            width: 300px;
+            height: 300px;
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .map-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.93;
+        }
+
+        .marker {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: #ff4d4d;
+            border-radius: 50%;
+            border: 3px solid white;
+            transform: translate(-50%, -50%);
+            box-shadow: 0px 0px 8px rgba(255, 77, 77, 0.9);
+        }
+
+        /* ANIMAÇÃO DE REALCE QUANDO ALGO MUDA */
+        @keyframes highlight {
+            0%   { background-color: rgba(255, 255, 0, 0.35); }
+            100% { background-color: transparent; }
+        }
+
+        .row-highlight {
+            animation: highlight 0.6s ease-out;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>IPTV 2.0 - Players Online</h1>
+
+<div class="table-wrapper">
+
+    <input type="text" id="search" placeholder="Buscar personagem...">
+
+    <table>
+        <thead>
+            <tr>
+                <th data-col="nick">Personagem ▲▼</th>
+                <th data-col="map">Mapa ▲▼</th>
+                <th data-col="coords">Coordenadas ▲▼</th>
+                <th data-col="safe">Safezone ▲▼</th>
+                <th>Minimapa</th>
+            </tr>
+        </thead>
+        <tbody id="players-body">
+            <tr><td class="no-data" colspan="5">Carregando…</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- POPUP -->
+<div id="popup-bg" onclick="closePopup()">
+    <div id="popup-box" onclick="event.stopPropagation()">
+        <h2 id="popup-title"></h2>
+        <div class="map-container">
+            <img id="popup-map" src="lorencia.png">
+            <div id="popup-marker" class="marker"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+/* ---------------- FIREBASE ---------------- */
+const firebaseConfig = {
+    apiKey: "AIzaSyBOEqDsLKnXJQNRrQzJaUJjkx7yvKwv7gE",
+    authDomain: "iptv-licenses.firebaseapp.com",
+    databaseURL: "https://iptv-licenses-default-rtdb.firebaseio.com",
+    projectId: "iptv-licenses",
+    storageBucket: "iptv-licenses.firebasestorage.app",
+    messagingSenderId: "132241212290",
+    appId: "1:132241212290:web:42ad31e863e9131409c59b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ---------------- STATE ---------------- */
+let players = [];
+let lastSnapshot = {};
+let sortCol = null;
+let sortAsc = true;
+
+/* ---------------- LORENCIA LIMITES ---------------- */
+const MIN_X = 7, MAX_X = 240;
+const MIN_Y = 7, MAX_Y = 245;
+
+const MAP_W = 300, MAP_H = 300;
+
+function mapToPixel(x, y) {
+    let nx = (x - MIN_X) / (MAX_X - MIN_X);
+    let ny = (y - MIN_Y) / (MAX_Y - MIN_Y);
+
+    nx = Math.max(0, Math.min(1, nx));
+    ny = Math.max(0, Math.min(1, ny));
+
+    return {
+        px: nx * MAP_W,
+        py: (1 - ny) * MAP_H
+    };
+}
+
+/* ---------------- RENDER ---------------- */
+function renderTable() {
+    const tbody = document.getElementById("players-body");
+    const busca = document.getElementById("search").value.toLowerCase();
+
+    tbody.innerHTML = "";
+
+    let filtrados = players.filter(p => p.nick.toLowerCase().includes(busca));
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = `<tr><td class="no-data" colspan="5">Nenhum jogador encontrado</td></tr>`;
+        return;
+    }
+
+    filtrados.forEach(p => {
+        const safeClass = p.safe === "Sim" ? "safe-yes" : "safe-no";
+        const safeText  = p.safe === "Sim" ? "Sim" : "Não";
+
+        const btn = p.map.toLowerCase() === 'lorencia'
+            ? `<button class="btn-mini" onclick="openPopup('${p.nick}', ${p.x}, ${p.y})">Ver mapa</button>`
+            : "-";
+
+        tbody.innerHTML += `
+            <tr id="row-${p.nick}">
+                <td>${p.nick}</td>
+                <td>${p.map}</td>
+                <td>${p.coords}</td>
+                <td class="${safeClass}">${safeText}</td>
+                <td>${btn}</td>
+            </tr>
+        `;
+    });
+
+    /* ---------------- ANIMAÇÃO QUANDO ALGO MUDA ---------------- */
+    filtrados.forEach(p => {
+        const old = lastSnapshot[p.nick] || {};
+
+        if (
+            old.map !== p.map ||
+            old.coords !== p.coords ||
+            old.safe !== p.safe
+        ) {
+            const row = document.getElementById(`row-${p.nick}`);
+            if (row) {
+                row.classList.remove("row-highlight");
+                void row.offsetWidth; 
+                row.classList.add("row-highlight");
+            }
+        }
+
+        lastSnapshot[p.nick] = {...p};
+    });
+}
+
+/* ---------------- ORDER ---------------- */
+document.querySelectorAll("th[data-col]").forEach(th => {
+    th.addEventListener("click", () => {
+        const col = th.dataset.col;
+
+        if (sortCol === col) {
+            sortAsc = !sortAsc;
+        } else {
+            sortCol = col;
+            sortAsc = true;
+        }
+
+        players.sort((a, b) => {
+            return sortAsc
+                ? a[col].localeCompare(b[col])
+                : b[col].localeCompare(a[col]);
+        });
+
+        renderTable();
+    });
+});
+
+/* ---------------- POPUP ---------------- */
+function openPopup(nick, x, y) {
+    const pos = mapToPixel(x, y);
+
+    document.getElementById("popup-title").innerText = nick;
+    document.getElementById("popup-marker").style.left = pos.px + "px";
+    document.getElementById("popup-marker").style.top  = pos.py + "px";
+
+    document.getElementById("popup-bg").style.display = "block";
+}
+
+function closePopup() {
+    document.getElementById("popup-bg").style.display = "none";
+}
+
+/* ---------------- SEARCH ---------------- */
+document.getElementById("search").addEventListener("input", renderTable);
+
+/* ---------------- FIREBASE LISTENER ---------------- */
+db.ref("online").on("value", snap => {
+    players = [];
+    const data = snap.val();
+
+    if (data) {
+        Object.keys(data).forEach(nick => {
+            const raw = data[nick].coordenadas || "0, 0";
+            const [x, y] = raw.split(",").map(v => parseInt(v.trim()));
+
+            players.push({
+                nick: nick,
+                map: data[nick].map || "Desconhecido",
+                coords: raw,
+                safe: data[nick].safezone || "Não",
+                x: x || 0,
+                y: y || 0
+            });
+        });
+    }
+
+    renderTable();
+});
+</script>
+
+</body>
+</html>
